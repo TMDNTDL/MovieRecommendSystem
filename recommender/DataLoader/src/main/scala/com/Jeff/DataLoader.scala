@@ -1,9 +1,17 @@
 package com.Jeff
 
+import co.elastic.clients.elasticsearch.ElasticsearchClient
+import co.elastic.clients.elasticsearch.indices.{CreateIndexRequest, DeleteIndexRequest, ExistsRequest}
+import co.elastic.clients.elasticsearch.transform.Settings
+import co.elastic.clients.json.jackson.JacksonJsonpMapper
+import co.elastic.clients.transport.endpoints.BooleanResponse
+import co.elastic.clients.transport.rest_client.RestClientTransport
 import com.mongodb.client.{MongoClients, MongoCollection, MongoDatabase}
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import com.mongodb.client.model.Indexes
+import org.apache.http.HttpHost
+import org.elasticsearch.client.RestClient
 
 
 /**
@@ -129,9 +137,22 @@ object DataLoader {
     // 将数据保存到MongoDB
     storeDataInMongoDB(movieDF, ratingDF, tagDF)
 
-    // 数据预处理
+    // Data Pre-processing, add movie with its corresponding tag info, tag1|tag2|tag3..
+    import org.apache.spark.sql.functions._
 
+    /**
+     * mid, tags
+     *
+     * tags: tag1|tag2|tag3...
+     */
+    val newTag = tagDF.groupBy($"mid")
+      .agg( concat_ws("|", collect_set($"tag")).as("tags"))
+      .select("mid", "tags")
 
+    // tags join with movie, combine them together, 左外链接
+    val movieWithTagsDF = movieDF.join(newTag, Seq("mid"), "left")
+
+    implicit val esConfig = ESConfig(config("es.httpHosts"),config("es.transportHosts"), config("es.index"), config("es.cluster.name"))
 
     // 保存数据到ES
     storeDataInES()
@@ -187,7 +208,48 @@ object DataLoader {
     // 关闭client
     client.close()
   }
-  def storeDataInES(): Unit = {
+  def storeDataInES(MovieDF: DataFrame)(implicit eSConfig: ESConfig): Unit = {
+    // analyze httpHosts
+    val Array(host, portStr) = eSConfig.httpHosts.split(",")(0).split(":")
+    val port = portStr.toInt
+
+    // init es config, creat client
+    val restClient = RestClient.builder(
+      new HttpHost(host, port, "http")
+    ).build()
+    val transport = new RestClientTransport(restClient, new JacksonJsonpMapper())
+    val esClient = new ElasticsearchClient(transport)
+
+    // delete old index
+    val index = eSConfig.index.toLowerCase()
+
+    val req: ExistsRequest =
+      new ExistsRequest.Builder().index(eSConfig.index).build()
+
+    val resp: BooleanResponse = esClient.indices().exists(req)
+    val exists: Boolean = resp.value()
+
+
+    if (exists) {
+      val delReq = new DeleteIndexRequest.Builder().index(index).build()
+      esClient.indices().delete(delReq)
+    }
+
+    // create index
+    val createReq = new CreateIndexRequest.Builder().index(index).build
+    esClient.indices().create(createReq)
+
+    // Spark writes data into ES
+    MovieDF.write
+      .format("org.elasticsearch.spark.sql")
+      .option("es.nodes", s"$host:$port")
+      .option("es.http.timeout", "100m")
+      .option("es.mapping.id", "mid")
+      .mode("overwrite")
+      .save(index)
+
+    transport.close()
+    restClient.close()
 
   }
 
