@@ -2,16 +2,23 @@ package com.Jeff
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient
 import co.elastic.clients.elasticsearch.indices.{CreateIndexRequest, DeleteIndexRequest, ExistsRequest}
-import co.elastic.clients.elasticsearch.transform.Settings
 import co.elastic.clients.json.jackson.JacksonJsonpMapper
+import co.elastic.clients.transport.TransportUtils
 import co.elastic.clients.transport.endpoints.BooleanResponse
 import co.elastic.clients.transport.rest_client.RestClientTransport
-import com.mongodb.client.{MongoClients, MongoCollection, MongoDatabase}
+import com.mongodb.client.MongoClients
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import com.mongodb.client.model.Indexes
 import org.apache.http.HttpHost
+import org.apache.http.auth.{AuthScope, UsernamePasswordCredentials}
+import org.apache.http.impl.client.BasicCredentialsProvider
+import org.apache.http.impl.nio.client.HttpAsyncClientBuilder
 import org.elasticsearch.client.RestClient
+import org.elasticsearch.spark.sql.sparkDatasetFunctions
+
+import java.io.File
+import javax.net.ssl.SSLContext
 
 
 /**
@@ -103,6 +110,18 @@ object DataLoader {
     // 创建一个SparkSession
     val spark = SparkSession.builder().config(sparkConf).getOrCreate()
 
+    // 在main方法中设置ES配置
+    spark.conf.set("es.nodes", "localhost")
+    spark.conf.set("es.port", "9200")
+    spark.conf.set("es.net.http.auth.user", "elastic")
+    spark.conf.set("es.net.http.auth.pass", "#Yuegong123")
+    spark.conf.set("es.net.ssl", "true")
+//    spark.conf.set("es.nodes.wan.only", "true")
+    spark.conf.set("es.net.ssl.truststore.location", "C:/Develop/ElasticSearchCertificate/http_ca.crt")
+    spark.conf.set("es.net.ssl.truststore.type", "PEM")
+    spark.conf.set("es.net.ssl.truststore.pass", "")
+    spark.conf.set("es.mapping.id", "mid")
+
 
     import spark.implicits._
     // 加载数据
@@ -155,7 +174,7 @@ object DataLoader {
     implicit val esConfig = ESConfig(config("es.httpHosts"),config("es.transportHosts"), config("es.index"), config("es.cluster.name"))
 
     // 保存数据到ES
-    storeDataInES()
+    storeDataInES(movieWithTagsDF)
 
     spark.stop()
   }
@@ -208,51 +227,171 @@ object DataLoader {
     // 关闭client
     client.close()
   }
-  def storeDataInES(MovieDF: DataFrame)(implicit eSConfig: ESConfig): Unit = {
-    // analyze httpHosts
-    val Array(host, portStr) = eSConfig.httpHosts.split(",")(0).split(":")
-    val port = portStr.toInt
+//  def storeDataInES(MovieDF: DataFrame)(implicit eSConfig: ESConfig): Unit = {
+//    val hostName = "yg-node-1"
+//    val certFile = new File("C:/Develop/ElasticSearchCertificate/http_ca.crt")
+//
+//    // 1. 修复Java客户端连接问题
+//    val sslContext: SSLContext = TransportUtils.sslContextFromHttpCaCrt(certFile)
+//
+//    val credsProv = new BasicCredentialsProvider()
+//    credsProv.setCredentials(
+//      AuthScope.ANY,
+//      new UsernamePasswordCredentials("elastic", "#Yuegong123")
+//    )
+//
+//    // 禁用主机名验证
+//    import org.apache.http.conn.ssl.NoopHostnameVerifier
+//    val hostnameVerifier = new NoopHostnameVerifier()
+//
+//    val restClient = RestClient.builder(
+//        new HttpHost(hostName, 9200, "https")
+//      )
+//      .setHttpClientConfigCallback((httpClientBuilder: HttpAsyncClientBuilder) => {
+//        httpClientBuilder
+//          .setSSLContext(sslContext)
+//          .setSSLHostnameVerifier(hostnameVerifier) // 添加这行
+//          .setDefaultCredentialsProvider(credsProv)
+//      })
+//      .build()
+//
+//    val transport = new RestClientTransport(restClient, new JacksonJsonpMapper())
+//    val esClient = new ElasticsearchClient(transport)
+//
+//    val index = eSConfig.index.toLowerCase()
+//
+//    try {
+//      println("测试Elasticsearch连接...")
+//
+//      // 先测试连接
+//      val info = esClient.info()
+//      println(s"✓ 连接到Elasticsearch集群: ${info.clusterName()}")
+//      println(s"✓ 版本: ${info.version().number()}")
+//
+//      val req: ExistsRequest = new ExistsRequest.Builder().index(index).build()
+//      val resp: BooleanResponse = esClient.indices().exists(req)
+//      val exists: Boolean = resp.value()
+//
+//      if (exists) {
+//        println(s"索引 $index 已存在，正在删除...")
+//        val delReq = new DeleteIndexRequest.Builder().index(index).build()
+//        esClient.indices().delete(delReq)
+//        println(s"✓ 已删除索引: $index")
+//      }
+//
+//      // 创建索引
+//      println(s"创建索引: $index")
+//      val createReq = new CreateIndexRequest.Builder().index(index).build()
+//      esClient.indices().create(createReq)
+//      println(s"✓ 已创建索引: $index")
+//
+//    } catch {
+//      case e: Exception =>
+//        println(s"ES客户端操作失败: ${e.getMessage}")
+//        e.printStackTrace()
+//        return // 如果Java客户端失败，直接返回
+//    } finally {
+//      transport.close()
+//      restClient.close()
+//    }
+//
+//    // 2. 修复Spark写入问题
+//    try {
+//      println("开始使用Spark写入数据到Elasticsearch...")
+//
+//      // 最简单的写法 - 使用saveToEs方法
+//      import org.elasticsearch.spark.sql._
+//
+//      MovieDF.saveToEs(s"$index/ES_MOVIE_INDEX")
+//
+//      println("✓ 数据已成功写入Elasticsearch")
+//
+//    } catch {
+//      case e: Exception =>
+//        println(s"Spark写入ES失败: ${e.getMessage}")
+//        e.printStackTrace()
+//
+//        // 如果HTTPS失败，尝试HTTP
+//        try {
+//          println("尝试使用HTTP协议...")
+//          MovieDF.saveToEs(s"$index/_doc", Map(
+//            "es.nodes" -> "172.18.41.215",
+//            "es.port" -> "9200",
+//            "es.net.http.auth.user" -> "elastic",
+//            "es.net.http.auth.pass" -> "#Yuegong123",
+//            "es.net.ssl" -> "false", // 使用HTTP
+//            "es.nodes.wan.only" -> "true",
+//            "es.mapping.id" -> "mid"
+//          ))
+//
+//          println("✓ 使用HTTP协议成功写入数据")
+//        } catch {
+//          case e2: Exception =>
+//            println(s"HTTP方案也失败: ${e2.getMessage}")
+//            e2.printStackTrace()
+//        }
+//    }
+//  }
+def storeDataInES(MovieDF: DataFrame)(implicit eSConfig: ESConfig): Unit = {
+  val hostName = "yg-node-1"
 
-    // init es config, creat client
-    val restClient = RestClient.builder(
-      new HttpHost(host, port, "http")
+  // Java客户端 - 使用HTTP
+  val credsProv = new BasicCredentialsProvider()
+  credsProv.setCredentials(AuthScope.ANY, new UsernamePasswordCredentials("elastic", "#Yuegong123"))
+
+  val restClient = RestClient.builder(new HttpHost(hostName, 9200, "http")) // 改为http
+    .setHttpClientConfigCallback(httpClientBuilder =>
+      httpClientBuilder.setDefaultCredentialsProvider(credsProv)
     ).build()
-    val transport = new RestClientTransport(restClient, new JacksonJsonpMapper())
-    val esClient = new ElasticsearchClient(transport)
 
-    // delete old index
-    val index = eSConfig.index.toLowerCase()
+  val transport = new RestClientTransport(restClient, new JacksonJsonpMapper())
+  val esClient = new ElasticsearchClient(transport)
 
-    val req: ExistsRequest =
-      new ExistsRequest.Builder().index(eSConfig.index).build()
+  val index = eSConfig.index.toLowerCase()
 
-    val resp: BooleanResponse = esClient.indices().exists(req)
-    val exists: Boolean = resp.value()
+  try {
+    println("测试Elasticsearch连接...")
+    val info = esClient.info()
+    println(s"连接到ES集群: ${info.clusterName()}, 版本: ${info.version().number()}")
 
+    val req: ExistsRequest = new ExistsRequest.Builder().index(index).build()
+    val exists: Boolean = esClient.indices().exists(req).value()
 
     if (exists) {
-      val delReq = new DeleteIndexRequest.Builder().index(index).build()
-      esClient.indices().delete(delReq)
+      esClient.indices().delete(new DeleteIndexRequest.Builder().index(index).build())
+      println(s"已删除索引: $index")
     }
 
-    // create index
-    val createReq = new CreateIndexRequest.Builder().index(index).build
-    esClient.indices().create(createReq)
+    esClient.indices().create(new CreateIndexRequest.Builder().index(index).build())
+    println(s"已创建索引: $index")
 
-    // Spark writes data into ES
-    MovieDF.write
-      .format("org.elasticsearch.spark.sql")
-      .option("es.nodes", s"$host:$port")
-      .option("es.http.timeout", "100m")
-      .option("es.mapping.id", "mid")
-      .mode("overwrite")
-      .save(index)
-
+  } finally {
     transport.close()
     restClient.close()
-
   }
 
+  // Spark写入ES - 使用HTTP
+  try {
+    println("开始Spark写入...")
+    import org.elasticsearch.spark.sql._
+
+    MovieDF.saveToEs(index, Map(
+      "es.nodes" -> hostName,
+      "es.port" -> "9200",
+      "es.net.http.auth.user" -> "elastic",
+      "es.net.http.auth.pass" -> "#Yuegong123",
+      "es.net.ssl" -> "false",
+      "es.mapping.id" -> "mid"
+    ))
+
+    println("Spark写入成功!")
+
+  } catch {
+    case e: Exception =>
+      println(s"Spark写入失败: ${e.getMessage}")
+      e.printStackTrace()
+  }
+}
 
 
 }

@@ -10,6 +10,10 @@
     </parent>
 
     <artifactId>recommender</artifactId>
+    <packaging>pom</packaging>
+    <modules>
+        <module>StatisticsRecommender</module>
+    </modules>
 
     <properties>
         <maven.compiler.source>8</maven.compiler.source>
