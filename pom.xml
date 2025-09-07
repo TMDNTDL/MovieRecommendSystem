@@ -70,11 +70,9 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.6.1</version>
-                <!--所有的编译用JDK1.8-->
+                <version>3.11.0</version> <!-- 更新到较新版本 -->
                 <configuration>
-                    <source>1.8</source>
-                    <target>1.8</target>
+                    <release>11</release>
                 </configuration>
             </plugin>
         </plugins>
