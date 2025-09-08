@@ -3,8 +3,6 @@ package com.Jeff
 import co.elastic.clients.elasticsearch.ElasticsearchClient
 import co.elastic.clients.elasticsearch.indices.{CreateIndexRequest, DeleteIndexRequest, ExistsRequest}
 import co.elastic.clients.json.jackson.JacksonJsonpMapper
-import co.elastic.clients.transport.TransportUtils
-import co.elastic.clients.transport.endpoints.BooleanResponse
 import co.elastic.clients.transport.rest_client.RestClientTransport
 import com.mongodb.client.MongoClients
 import org.apache.spark.SparkConf
@@ -13,12 +11,8 @@ import com.mongodb.client.model.Indexes
 import org.apache.http.HttpHost
 import org.apache.http.auth.{AuthScope, UsernamePasswordCredentials}
 import org.apache.http.impl.client.BasicCredentialsProvider
-import org.apache.http.impl.nio.client.HttpAsyncClientBuilder
 import org.elasticsearch.client.RestClient
-import org.elasticsearch.spark.sql.sparkDatasetFunctions
 
-import java.io.File
-import javax.net.ssl.SSLContext
 
 
 /**
@@ -151,7 +145,7 @@ object DataLoader {
     ).toDF()
 
     // MongoDB Configuration
-    implicit val mongoConfig = MongoConfig(config("mongo.uri"), config("mongo.db"))
+    implicit val mongoConfig = MongoConfig(config("mongo.uri"), config("zdb"))
 
     // 将数据保存到MongoDB
     storeDataInMongoDB(movieDF, ratingDF, tagDF)
