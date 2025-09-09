@@ -18,4 +18,52 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
+    <dependencies>
+        <!-- Spark的依赖引入 -->
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-core_2.12</artifactId>
+            <version>3.5.6</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-sql_2.12</artifactId>
+            <version>3.5.6</version>
+        </dependency>
+        <!-- 引入Scala -->
+        <dependency>
+            <groupId>org.scala-lang</groupId>
+            <artifactId>scala-library</artifactId>
+            <version>2.12.18</version>   <!-- 建议最新的 2.12.x -->
+        </dependency>
+        <dependency>
+        <!-- MongoDB 依赖-->
+            <groupId>org.mongodb.spark</groupId>
+            <artifactId>mongo-spark-connector_2.12</artifactId>
+            <version>10.4.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.mongodb</groupId>
+            <artifactId>mongodb-driver-sync</artifactId>
+            <version>5.1.4</version>
+        </dependency>
+        <dependency>
+            <groupId>org.reactivestreams</groupId>
+            <artifactId>reactive-streams</artifactId>
+            <version>1.0.4</version>
+        </dependency>
+
+        <!-- https://mvnrepository.com/artifact/org.jblas/jblas -->
+        <dependency>
+            <groupId>org.jblas</groupId>
+            <artifactId>jblas</artifactId>
+            <version>${jblas.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-mllib_2.12</artifactId>
+            <version>3.5.6</version>
+        </dependency>
+    </dependencies>
+
 </project>
