@@ -145,7 +145,7 @@ object DataLoader {
     ).toDF()
 
     // MongoDB Configuration
-    implicit val mongoConfig = MongoConfig(config("mongo.uri"), config("zdb"))
+    implicit val mongoConfig = MongoConfig(config("mongo.uri"), config("mongo.db"))
 
     // 将数据保存到MongoDB
     storeDataInMongoDB(movieDF, ratingDF, tagDF)
