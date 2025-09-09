@@ -38,7 +38,7 @@
         <scala.version>2.12.18</scala.version> <!-- Spark 3.5.x 默认推荐 Scala 2.12 -->
 
         <!-- Math libs -->
-        <jblas.version>1.2.5</jblas.version> <!-- jblas 最新版 -->
+        <jblas.version>1.2.3</jblas.version> <!-- jblas 最新版 -->
     </properties>
 
     <dependencies>

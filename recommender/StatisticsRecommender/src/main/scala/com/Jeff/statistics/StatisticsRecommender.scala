@@ -39,7 +39,7 @@ object StatisticsRecommender {
       "mongo.db" -> "recommender"
     )
 
-    val sparkConf = new SparkConf().setMaster(config("spark.cores")).setAppName("DataLoader")
+    val sparkConf = new SparkConf().setMaster(config("spark.cores")).setAppName("StatisticsRecommender")
 
     // create a spark session
     val spark = SparkSession.builder().config(sparkConf).getOrCreate()
