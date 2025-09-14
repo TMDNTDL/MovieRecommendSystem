@@ -55,17 +55,20 @@ object ALSRecommender {
       ) // remove the time tick
       .cache()
 
+    println(s"✅ Loaded rating data: ${ratingRDD.count()} rows")
+
     // ALS model depend on history score
     // loading uid, mid from rating, and remove duplication
     val userRDD = ratingRDD.map(_._1).distinct()
     val movieRDD = ratingRDD.map(_._2).distinct()
-
+    println(s"✅ Distinct users: ${userRDD.count()}, movies: ${movieRDD.count()}")
     // Training ALS Model
     val trainData = ratingRDD.map( x => Rating(x._1, x._2, x._3))
 
-    val (rank, iterations, lambda) = (50,5,0.01)
+    val (rank, iterations, lambda) = (100,10,0.1)
     // rank is the number of features
     val model = ALS.train(trainData, rank, iterations, lambda)
+    println(s"✅ ALS model trained: rank=$rank, iterations=$iterations, lambda=$lambda")
 
     // Based on user char matrix and movie char matrix, calculate the predict score,get user recommend list
     // calculate user and movie cartesian, return an empty score matrix
@@ -73,6 +76,8 @@ object ALSRecommender {
 
     // predict, return RDD[Rating] (user,product, rating)
     val preRatings = model.predict(userMovies)
+    println(s"✅ Predictions done: ${preRatings.count()} entries")
+
 
     val userRecs = preRatings
       .filter(_.rating > 0)
@@ -85,6 +90,7 @@ object ALSRecommender {
           ))
       }
       .toDF()
+    println(s"✅ User recommendations generated: ${userRecs.count()} users")
 
     userRecs.write
       .option("uri", mongoConfig.uri)
@@ -93,10 +99,13 @@ object ALSRecommender {
       .mode("overwrite")
       .format("mongodb")
       .save()
-    // based on movie hidden char matrix, calculate similarity, get movie similarity list
+    println("💾 UserRecs saved to MongoDB")
+
+    // Movie similarity calculation
     val movieFeatures = model.productFeatures.map{
       case (mid, features) => (mid, new DoubleMatrix(features))
     }
+    println(s"✅ Movie feature vectors generated: ${movieFeatures.count()} movies")
 
     // 对所有电影两两计算他们的相似度，先做笛卡尔积
     val movieRecs = movieFeatures.cartesian(movieFeatures)
@@ -115,6 +124,7 @@ object ALSRecommender {
         case (mid, items) => MovieRecs( mid, items.toList.sortWith(_._2 > _._2).map(x => Recommendation(x._1, x._2)))
       }
       .toDF()
+    println(s"✅ Movie similarity recommendations generated: ${movieRecs.count()} movies")
 
     movieRecs.write
       .option("uri", mongoConfig.uri)
@@ -123,7 +133,7 @@ object ALSRecommender {
       .mode("overwrite")
       .format("mongodb")
       .save()
-
+    println("💾 MovieRecs saved to MongoDB")
     spark.stop()
   }
   // consine distance
