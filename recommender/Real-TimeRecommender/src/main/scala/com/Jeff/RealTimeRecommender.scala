@@ -2,11 +2,16 @@ package com.Jeff
 
 import org.apache.spark.sql.ForeachWriter
 import com.mongodb.client.MongoClients
+import com.mongodb.client.model.Filters
 import org.apache.kafka.common.serialization.StringDeserializer
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.streaming.{Seconds, StreamingContext}
+import org.bson.Document
 import redis.clients.jedis.Jedis
+
+import java.util
+import scala.collection.convert.ImplicitConversions.`iterable AsScalaIterable`
 
 // Recommendation case Object
 case class Recommendation (mid: Int, score: Double)
@@ -144,9 +149,25 @@ object RealTimeRecommender {
   def getTopSimMovies(num: Int, mid: Int, uid: Int, simMovies: scala.collection.Map[Int, scala.collection.immutable.Map[Int, Double]])
                      (implicit mongoConfig: MongoConfig) : Array[Int] ={
     // 1. get all similar movie from the similar matrix
+    val allSimMovies = simMovies(mid).toArray
 
     // 2. get viewed movie of user from mongodb
+    val ratingExistCollection = ConnHelper.mongoClient
+      .getDatabase(mongoConfig.db)
+      .getCollection(MONGODB_RATING_COLLECTION)
 
+    val ratingExist = ratingExistCollection
+      .find(Filters.eq("uid", uid))
+      .into(new util.ArrayList[Document]())
+      .asScala
+      .map(doc => doc.get("mid").toString.toInt)
+      .toArray
     // 3. filter, get the output
+
+    allSimMovies.filter( x => !ratingExist.contains(x._1))
+      .sortWith(_._2> _._2)
+      .take(num)
+      // (mid, score)
+      .map(x => x._1) // taken out the score and only mid
   }
 }
