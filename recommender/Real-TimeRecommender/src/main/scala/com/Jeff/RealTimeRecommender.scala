@@ -108,7 +108,7 @@ object RealTimeRecommender {
         val simMovies = getTopSimMovies(MAX_SIM_MOVIES_NUM, mid, uid, simMovieMatrixBroadCast.value)
 
         // calculate movie recommendation level
-        val streamRecs = computeMovieScores(simMovieMatrixBroadCast.value, userRecentlyRatings, simMovies)
+        val streamRecs = computeMovieScores(simMovies, userRecentlyRatings, simMovieMatrixBroadCast.value)
 
         // save Data to MongoDB
         saveRecsToMongoDB(uid, streamRecs)
@@ -169,5 +169,53 @@ object RealTimeRecommender {
       .take(num)
       // (mid, score)
       .map(x => x._1) // taken out the score and only mid
+  }
+
+  def computeMovieScores(CandidateMovies: Array[Int],
+                         userRecentlyRatings: Array[(Int, Double)],
+                         simMovies: scala.collection.Map[Int, scala.collection.immutable.Map[Int, Double]]): Array[(Int, Double)] ={
+    // ArrayBuffer, stores basic score for all candidate movie
+    val scores = scala.collection.mutable.ArrayBuffer[(Int, Double)]()
+
+    // define HashMap, store all candidate and its UserRecentlyRatings
+    val increMap = scala.collection.mutable.HashMap[Int, Int]()
+    val descreMap = scala.collection.mutable.HashMap[Int, Int]()
+
+    for ( candidateMovie <- CandidateMovies; userRecentlyRatings <- userRecentlyRatings){
+      // get candidate movie and its comparison of rated movie.
+      val simScore = getMoviesSimScore( candidateMovie, userRecentlyRatings._1, simMovies)
+
+      if (simScore > 0.7){
+        scores += ((candidateMovie, simScore * userRecentlyRatings._2))
+        if ( userRecentlyRatings._2 > 3){
+          increMap(candidateMovie) = increMap.getOrElseUpdate(candidateMovie, 0) + 1
+        }else{
+          descreMap(candidateMovie) = descreMap.getOrElseUpdate(candidateMovie, 0) + 1
+        }
+      }
+    }
+
+    // groupby mid for candidate movie
+    scores.groupBy(_._1).map{
+          // after groupby, return an Map( mid -> ArrayBuffer[(mid, score)])
+      case (mid, scoreList) =>
+        ( mid, scoreList.map(_._2).sum / scoreList.length + log(increMap.getOrElseUpdate(mid, 1)) - log(descreMap.getOrElseUpdate(mid, 1)) )
+    }.toArray
+  }
+  // Find the similarity between two movies
+  def getMoviesSimScore(mid1: Int, mid2: Int, simMovies: scala.collection.Map[Int, scala.collection.immutable.Map[Int, Double]])
+  : Double = {
+    simMovies.get(mid1) match {
+      case Some(sims) => sims.get(mid2) match {
+        case Some(score) => score
+        case None => 0.0
+      }
+      case None => 0.0
+    }
+  }
+  // base 10 log
+  def log(m: Int): Double ={
+    val N = 10
+    math.log(m)/ math.log(N)
   }
 }
