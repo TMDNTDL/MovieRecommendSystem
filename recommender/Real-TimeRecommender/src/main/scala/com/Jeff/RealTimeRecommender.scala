@@ -26,7 +26,7 @@ case class MongoConfig(uri:String, db:String)
 // Define connector Helper
 object ConnHelper extends Serializable{
   // only run when need to use
-  lazy val jedis = new Jedis("localhost")
+  lazy val jedis = new Jedis("172.18.41.215", 6379)
   lazy val mongoClient = MongoClients.create("mongodb://localhost:27017/recommender")
 }
 object RealTimeRecommender {
@@ -75,17 +75,18 @@ object RealTimeRecommender {
 
 
     // Connect Kafka Stream to Spark Stream
-    val kafkaStream = spark.readStream
+    val kafkaStream = spark
+      .readStream
       .format("kafka")
-      .option("kafka.bootstrap.servers", "localhost:9092")
-      .option("subscribe", config("kafka.topic")) // subscribe topic
+      .option("kafka.bootstrap.servers", "172.18.41.215:9092")
+      .option("subscribe", "recommender") // subscribe topic
       .option("startingOffsets", "latest")
-      .option("group.id", "recommender")
       .load()
 
     // Turn Binary into String
-    val rawRatings = kafkaStream.selectExpr("CAST(key AS STRING)", "CAST(Value AS STRING)").as[String]
+    val rawRatings = kafkaStream.selectExpr("CAST(value AS STRING)").as[String]
 
+    println("Ready to take data!!!")
     // 把原始数据UID|MID|SCORE|TIMESTAMP 转换成评分流
     val ratingStream = rawRatings.map{
       msg =>
@@ -111,12 +112,16 @@ object RealTimeRecommender {
         val streamRecs = computeMovieScores(simMovies, userRecentlyRatings, simMovieMatrixBroadCast.value)
 
         // save Data to MongoDB
-        saveRecsToMongoDB(uid, streamRecs)
+        saveDataToMongoDB(uid, streamRecs)
       }
 
       override def close(errorOrNull:  scala.Throwable): Unit = {}
     }
 
+    val debugStream = ratingStream.map { record =>
+      println(s"Received record: $record")
+      record
+    }
     // Core Algorithms
     val query = ratingStream.writeStream
       .foreach(writer)
@@ -217,5 +222,25 @@ object RealTimeRecommender {
   def log(m: Int): Double ={
     val N = 10
     math.log(m)/ math.log(N)
+  }
+
+  def saveDataToMongoDB(uid: Int, streamRecs: Array[(Int, Double)])(implicit mongoConfig: MongoConfig): Unit ={
+    // define table connection
+    val streamRecsCollection = ConnHelper.mongoClient
+      .getDatabase(mongoConfig.db)
+      .getCollection(MONGODB_STREAM_RECS_COLLECTION)
+
+    // delete existing UID in the table
+    streamRecsCollection.findOneAndDelete(Filters.eq("uid", uid))
+
+    // store StreamRecs into the table
+    val dataDoc = new Document()
+      .append("uid", uid)
+      .append("recs", streamRecs.map{
+        case (mid, score) =>
+          new Document().append("mid", mid).append("score", score)
+      }.toList.asJava)
+    streamRecsCollection.insertOne(dataDoc)
+
   }
 }
