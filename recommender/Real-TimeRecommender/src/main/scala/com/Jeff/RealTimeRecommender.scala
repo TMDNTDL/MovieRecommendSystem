@@ -97,11 +97,11 @@ object RealTimeRecommender {
     val writer = new ForeachWriter[(Int, Int, Double, Int)]{
       override def open(partitionId: Long, version: Long): Boolean = true
 
-      override def process(record: (Int, Int, Double, Int)):Unit ={
-        val (uid, mid, score, timestamp) = record
+      override def process(record: (Int, Int)):Unit ={
+        val (uid, mid) = record
 
         println("rating data coming! >>>>>>>>>>>>>>>>>>>>>>>")
-
+        println("uid: " + uid, "mid: " + mid)
         // get recently M movie score
         val userRecentlyRatings = getUserRecentlyRating(MAX_USER_RATING_NUM, uid, ConnHelper.jedis)
 
@@ -118,10 +118,6 @@ object RealTimeRecommender {
       override def close(errorOrNull:  scala.Throwable): Unit = {}
     }
 
-    val debugStream = ratingStream.map { record =>
-      println(s"Received record: $record")
-      record
-    }
     // Core Algorithms
     val query = ratingStream.writeStream
       .foreach(writer)
