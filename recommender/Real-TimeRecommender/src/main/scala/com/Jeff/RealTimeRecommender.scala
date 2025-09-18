@@ -97,8 +97,8 @@ object RealTimeRecommender {
     val writer = new ForeachWriter[(Int, Int, Double, Int)]{
       override def open(partitionId: Long, version: Long): Boolean = true
 
-      override def process(record: (Int, Int)):Unit ={
-        val (uid, mid) = record
+      override def process(record: (Int, Int, Double, Int)):Unit ={
+        val (uid, mid, score, timeStamp) = record
 
         println("rating data coming! >>>>>>>>>>>>>>>>>>>>>>>")
         println("uid: " + uid, "mid: " + mid)
@@ -221,6 +221,7 @@ object RealTimeRecommender {
   }
 
   def saveDataToMongoDB(uid: Int, streamRecs: Array[(Int, Double)])(implicit mongoConfig: MongoConfig): Unit ={
+    val sortedStreamRecs = streamRecs.sortBy{ case (mid, score) => (-score, mid) }
     // define table connection
     val streamRecsCollection = ConnHelper.mongoClient
       .getDatabase(mongoConfig.db)
@@ -232,7 +233,7 @@ object RealTimeRecommender {
     // store StreamRecs into the table
     val dataDoc = new Document()
       .append("uid", uid)
-      .append("recs", streamRecs.map{
+      .append("recs", sortedStreamRecs.map{
         case (mid, score) =>
           new Document().append("mid", mid).append("score", score)
       }.toList.asJava)

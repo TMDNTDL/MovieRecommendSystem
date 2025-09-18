@@ -13,6 +13,7 @@
         <module>recommender/DataLoader</module>
         <module>recommender/ALSOfflineRecommender</module>
         <module>recommender/Real-TimeRecommender</module>
+        <module>recommender/ContentRecommender</module>
     </modules>
 
     <properties>
