@@ -14,6 +14,7 @@
         <module>recommender/ALSOfflineRecommender</module>
         <module>recommender/Real-TimeRecommender</module>
         <module>recommender/ContentRecommender</module>
+        <module>recommender/KafkaStream</module>
     </modules>
 
     <properties>

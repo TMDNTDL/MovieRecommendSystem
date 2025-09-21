@@ -3,7 +3,8 @@ package com.Jeff
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.SparkSession
 import org.jblas.DoubleMatrix
-
+import org.apache.spark.ml.feature.{CountVectorizer, HashingTF, IDF, Tokenizer}
+import org.apache.spark.ml.linalg.SparseVector
 //Dataset is movie content
 case class Movie(mid: Int, name:String, descri:String, timelong:String, issue:String,
                  shoot:String, language: String, genres:String, actors: String, directors:String)
@@ -51,8 +52,46 @@ object ContentRecommender {
       .toDF("mid", "name", "genres")
       .cache()
 
+    //using TF-IDF extract movie Features
 
-    val movieFeatures = null
+    // create a tokenizer
+    val tokenizer = new Tokenizer().setInputCol("genres").setOutputCol("words")
+
+    // use tokenizer to convert original data
+    val wordsData = tokenizer.transform(movieTagsDF)
+
+    // import HashingTF Tools, turn word serialize into frequency
+    // setting the numFeature higher to avoid hashing collidion
+    // 变成一个稀疏向量的表达式， 3-tuple
+    val cv = new CountVectorizer()
+      .setInputCol("words")
+      .setOutputCol("rawFeatures")
+    val cvModel = cv.fit(wordsData)
+
+    //val hashingTF = new HashingTF().setInputCol("words").setOutputCol("rawFeatures").setNumFeatures(150)
+    val featurized = cvModel.transform(wordsData)
+
+    // import IDF Tools
+    val idf = new IDF().setInputCol("rawFeatures").setOutputCol("features")
+    // get the inverse data frequency
+    val idfModel = idf.fit(featurized) // just IDF vector 1x50 in this case
+
+    // pre-process all data, and get tf-idf as new vector
+    // multiple each row non-zero index i with IDF(i) to return TF-IDF
+    val rescaleData = idfModel.transform(featurized)
+
+    rescaleData.show(truncate = false)
+
+    val movieFeatures = rescaleData.map(
+      row => (row.getAs[Int]("mid"), row.getAs[SparseVector]("features").toArray)
+
+    )
+      .rdd
+      .map(
+        x => (x._1, new DoubleMatrix(x._2))
+      )
+
+    //movieFeatures.collect().foreach(println)
     val movieRecs = movieFeatures.cartesian(movieFeatures)
       .filter{
         case (a, b) => a._1 != b._1
@@ -74,7 +113,7 @@ object ContentRecommender {
     movieRecs.write
       .option("uri", mongoConfig.uri)
       .option("spark.mongodb.database", mongoConfig.db)
-      .option("collection", MOVIE_RECS)
+      .option("collection", CONTENT_MOVIE_RECS)
       .mode("overwrite")
       .format("mongodb")
       .save()
